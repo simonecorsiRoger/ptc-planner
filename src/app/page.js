@@ -17,16 +17,28 @@ const DAYS = ['L','M','M','G','V','S','D']
 const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
 const RUOLI = [
-  { key:'elite',    label:'Élite Coach',       counted:false, color:'#1a6b3c' },
-  { key:'head',     label:'Head Coach',         counted:true,  color:'#1a6b3c' },
-  { key:'coach',    label:'Coach',              counted:true,  color:'#1a6b3c' },
-  { key:'asst',     label:'Assistant Coach',    counted:true,  color:'#2e7d32' },
-  { key:'tiro',     label:'Tirocinante',        counted:true,  color:'#388e3c' },
-  { key:'physical', label:'Physical Trainer',   counted:false, color:'#f57c00' },
-  { key:'travel',   label:'Travelling Coach',   counted:false, color:'#1565c0' },
-  { key:'video',    label:'Video/Fisio/Mental', counted:false, color:'#6a1b9a' },
-  { key:'extra',    label:'Extra Program',      counted:false, color:'#6a1b9a' },
+  { key:'elite',    label:'Élite Coach',       counted:false, color:'#1a6b3c', order:0 },
+  { key:'head',     label:'Head Coach',         counted:true,  color:'#1565c0', order:1 },
+  { key:'coach',    label:'Coach',              counted:true,  color:'#1a6b3c', order:2 },
+  { key:'asst',     label:'Assistant Coach',    counted:true,  color:'#2e7d32', order:3 },
+  { key:'tiro',     label:'Tirocinante',        counted:true,  color:'#388e3c', order:4 },
+  { key:'physical', label:'Physical Trainer',   counted:true,  color:'#f57c00', order:5 },
+  { key:'travel',   label:'Travelling Coach',   counted:false, color:'#795548', order:6 },
+  { key:'video',    label:'Video/Fisio/Mental', counted:false, color:'#6a1b9a', order:7 },
+  { key:'extra',    label:'Extra Program',      counted:false, color:'#9e9e9e', order:8 },
 ]
+
+const ROLE_ORDER = ['elite','head','coach','asst','tiro','physical','travel','video','extra']
+function sortRows(rows) {
+  return [...rows].sort((a,b) => {
+    const ai = ROLE_ORDER.indexOf(a.ruolo)
+    const bi = ROLE_ORDER.indexOf(b.ruolo)
+    const ao = ai === -1 ? 99 : ai
+    const bo = bi === -1 ? 99 : bi
+    if (ao !== bo) return ao - bo
+    return a.nome.localeCompare(b.nome)
+  })
+}
 
 const IMPEGNI = [
   { key:'torneo', label:'🏆 Torneo',      color:'#e53935' },
@@ -87,12 +99,17 @@ function subscribeToTable(table, callback) {
 }
 
 function calcCounters(rows) {
-  const centro    = DAYS.map((_,di)=>rows.filter(r=>['head','coach','asst','tiro'].includes(r.ruolo)&&r.giorni[di]&&!r.impegno).length)
+  const centro    = DAYS.map((_,di)=>rows.filter(r=>['elite','head','coach','asst','tiro','physical'].includes(r.ruolo)&&r.giorni[di]&&!r.impegno).length)
   const torneo    = DAYS.map((_,di)=>rows.filter(r=>r.giorni[di]&&r.impegno==='torneo').length)
   const travel    = DAYS.map((_,di)=>rows.filter(r=>r.giorni[di]&&r.ruolo==='travel').length)
   const extra     = DAYS.map((_,di)=>rows.filter(r=>r.giorni[di]&&r.ruolo==='extra').length)
   const tiroFuori = DAYS.map((_,di)=>rows.filter(r=>r.giorni[di]&&r.ruolo==='tiro'&&r.impegno).length)
-  return { centro, torneo, travel, extra, tiroFuori }
+  // Per-role daily breakdown
+  const byRole = {}
+  ROLE_ORDER.forEach(rk => {
+    byRole[rk] = DAYS.map((_,di)=>rows.filter(r=>r.ruolo===rk&&r.giorni[di]&&!r.impegno).length)
+  })
+  return { centro, torneo, travel, extra, tiroFuori, byRole }
 }
 
 const STORAGE_KEY = 'ptc_planner_v5'
@@ -577,11 +594,22 @@ function CoachPage({ coaches, weeks, onUpdateCoach, onAddCoach }) {
 // ── WeekBlock (mobile-first) ──────────────────────────────────────────
 function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onAddRow, onDeleteRow }) {
   const [expanded, setExpanded] = useState(true)
-  const { centro, torneo, travel, extra, tiroFuori } = calcCounters(week.rows)
+  const { centro, torneo, travel, extra, tiroFuori, byRole } = calcCounters(week.rows)
   const monthIdx=MONTHS.indexOf(sectionName)
   let weekMon=null,weekSun=null
   if(monthIdx>=0){weekMon=new Date(2026,monthIdx,week.num);weekSun=new Date(2026,monthIdx,week.num+6)}
   const torneiSett=weekMon?tornei.filter(t=>{const d=new Date(t.data);return d>=weekMon&&d<=weekSun}):[]
+
+  const sortedRows = sortRows(week.rows)
+
+  // Role breakdown labels to show
+  const roleBreakdown = [
+    { key:'elite',    label:'⭐ Élite',    color:'#1a6b3c' },
+    { key:'head',     label:'👑 Head',     color:'#1565c0' },
+    { key:'coach',    label:'🎾 Coach',    color:'#1a6b3c' },
+    { key:'asst',     label:'🤝 Asst.',    color:'#2e7d32' },
+    { key:'physical', label:'💪 Physical', color:'#f57c00' },
+  ]
 
   return (
     <div style={{ background:'#fff', borderRadius:12, border:`1px solid ${G.border}`, marginBottom:14, overflow:'hidden', boxShadow:'0 1px 6px rgba(26,107,60,0.07)' }}>
@@ -599,8 +627,9 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
           <button onClick={()=>setExpanded(e=>!e)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:G.textMid, padding:'4px' }}>{expanded?'▲':'▼'}</button>
         </div>
 
-        {/* Day badges - scrollabile su mobile */}
+        {/* Totale al centro per giorno */}
         <div style={{ display:'flex', gap:4, marginTop:10, overflowX:'auto', paddingBottom:2 }}>
+          <div style={{ flexShrink:0, fontSize:10, fontWeight:700, color:G.textMid, alignSelf:'center', minWidth:60 }}>TOTALE</div>
           {DAYS.map((d,i)=>(
             <div key={i} style={{ textAlign:'center', flexShrink:0 }}>
               <div style={{ fontSize:9, color:G.textLight, fontWeight:700, marginBottom:2 }}>{d}</div>
@@ -613,12 +642,30 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
           </div>
         </div>
 
-        {/* Stat bars */}
+        {/* Breakdown per ruolo */}
+        {expanded&&(
+          <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:3 }}>
+            {roleBreakdown.filter(r=>byRole[r.key]?.reduce((a,b)=>a+b,0)>0).map(r=>(
+              <div key={r.key} style={{ display:'flex', gap:4, alignItems:'center', overflowX:'auto' }}>
+                <div style={{ flexShrink:0, fontSize:9, fontWeight:700, color:r.color, minWidth:60, whiteSpace:'nowrap' }}>{r.label}</div>
+                {DAYS.map((d,i)=>(
+                  <div key={i} style={{ textAlign:'center', flexShrink:0, width:30 }}>
+                    <div style={{ height:20, borderRadius:4, background:byRole[r.key][i]>0?r.color+'20':'transparent', color:byRole[r.key][i]>0?r.color:G.textLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700 }}>
+                      {byRole[r.key][i]||''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Stat bars fuori centro */}
         {expanded&&(
           <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
             <StatBar label="🏆 Torneo" color={G.red} values={torneo} />
-            <StatBar label="✈️ Travel" color={G.blue} values={travel} />
-            <StatBar label="📋 Extra" color={G.purple} values={extra} />
+            <StatBar label="✈️ Travel" color={'#795548'} values={travel} />
+            <StatBar label="📋 Extra" color={'#9e9e9e'} values={extra} />
           </div>
         )}
 
@@ -646,7 +693,7 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
       )}
       {expanded&&week.rows.length>0&&(
         <div>
-          {week.rows.map((row,ri)=>{
+          {sortedRows.map((row,ri)=>{
             const ruoloInfo=RUOLI.find(r=>r.key===row.ruolo)
             const impegnoInfo=IMPEGNI.find(i=>i.key===row.impegno)
             return (
