@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SECTIONS, DAYS, COLS, COL_KEYS, COUNTED_ROLES, uid, calcDays, buildInitialWeeks } from './data'
 
 const G = {
@@ -14,7 +14,6 @@ const G = {
   red: '#e53935',
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children }) {
   if (!open) return null
   return (
@@ -74,7 +73,6 @@ function FSelect({ value, onChange, options }) {
   )
 }
 
-// ── Day checkboxes nel modale ─────────────────────────────────────────
 function DayPicker({ selected, onChange }) {
   function toggle(i) {
     const next = [...selected]
@@ -98,9 +96,7 @@ function DayPicker({ selected, onChange }) {
   )
 }
 
-// ── Week block ────────────────────────────────────────────────────────
 function WeekBlock({ week, onUpdate, onDelete, onAddRow, onDeleteRow }) {
-  // Ricalcola giorni automaticamente dai ruoli conteggiati
   const autoDays = calcDays(week.rows)
 
   return (
@@ -109,13 +105,11 @@ function WeekBlock({ week, onUpdate, onDelete, onAddRow, onDeleteRow }) {
       border: `1px solid ${G.border}`, marginBottom: 16,
       overflow: 'hidden', boxShadow: '0 1px 6px rgba(26,107,60,0.07)'
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         background: G.greenLight, borderBottom: `1px solid ${G.border}`,
         padding: '10px 16px'
       }}>
-        {/* Numero settimana */}
         <div style={{
           width: 46, height: 46, borderRadius: 10, background: G.green,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -140,7 +134,6 @@ function WeekBlock({ week, onUpdate, onDelete, onAddRow, onDeleteRow }) {
           </div>
         </div>
 
-        {/* Contatori giorni automatici */}
         <div style={{ display: 'flex', gap: 5 }}>
           {DAYS.map((d, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
@@ -156,7 +149,6 @@ function WeekBlock({ week, onUpdate, onDelete, onAddRow, onDeleteRow }) {
           ))}
         </div>
 
-        {/* Bottoni */}
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button onClick={onAddRow} style={{
             background: '#fff', border: `1.5px solid ${G.green}`,
@@ -171,7 +163,6 @@ function WeekBlock({ week, onUpdate, onDelete, onAddRow, onDeleteRow }) {
         </div>
       </div>
 
-      {/* Tabella maestri */}
       {week.rows.length === 0 ? (
         <div style={{ padding: '24px', textAlign: 'center', color: G.textLight, fontSize: 13 }}>
           Nessun maestro — clicca <strong>+ Maestro</strong> per aggiungere
@@ -254,30 +245,61 @@ const tdStyle = {
   verticalAlign: 'middle', fontSize: 13
 }
 
-// ── Main ──────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'ptc_planner_v1'
+
+function loadState() {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function saveState(sections, weeks) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, weeks }))
+  } catch {}
+}
+
 export default function Home() {
   const [sections, setSections] = useState(SECTIONS)
   const [active, setActive] = useState('s6')
   const [weeks, setWeeks] = useState(() => buildInitialWeeks())
+  const [loaded, setLoaded] = useState(false)
 
-  // Modal: aggiungi maestro
-  const [modalRow, setModalRow] = useState(null) // weekId
+  // Carica da localStorage al primo render
+  useEffect(() => {
+    const saved = loadState()
+    if (saved) {
+      if (saved.sections) setSections(saved.sections)
+      if (saved.weeks) setWeeks(saved.weeks)
+    }
+    setLoaded(true)
+  }, [])
+
+  // Salva automaticamente ogni volta che cambia qualcosa
+  useEffect(() => {
+    if (!loaded) return
+    saveState(sections, weeks)
+  }, [sections, weeks, loaded])
+
+  const [modalRow, setModalRow] = useState(null)
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState('')
   const [newDays, setNewDays] = useState([false,false,false,false,false,false,false])
 
-  // Modal: aggiungi settimana
   const [modalWeek, setModalWeek] = useState(false)
   const [newWeekNum, setNewWeekNum] = useState('')
   const [newWeekNote, setNewWeekNote] = useState('')
 
-  // Modal: aggiungi sezione
   const [modalSection, setModalSection] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
 
+  const [saved, setSaved] = useState(false)
+
   const wks = weeks[active] || []
 
-  // Totali giornalieri: somma di tutti i contatori auto di tutte le settimane
   const totalDays = DAYS.map((_, di) =>
     wks.reduce((sum, w) => sum + calcDays(w.rows)[di], 0)
   )
@@ -306,27 +328,19 @@ export default function Home() {
 
   function confirmAddRow() {
     if (!newRole || !newName.trim()) return
-    const row = {
-      id: uid(),
-      name: newName.trim(),
-      role: newRole,
-      days: newDays,
-    }
-    setActiveWeeks(ws => ws.map(w => w.id === modalRow
-      ? { ...w, rows: [...w.rows, row] } : w
-    ))
+    const row = { id: uid(), name: newName.trim(), role: newRole, days: newDays }
+    setActiveWeeks(ws => ws.map(w => w.id === modalRow ? { ...w, rows: [...w.rows, row] } : w))
     setModalRow(null)
+    flashSaved()
   }
 
   function confirmAddWeek() {
     const num = parseInt(newWeekNum) || ((wks.slice(-1)[0]?.num || 0) + 7)
-    setActiveWeeks(ws => [...ws, {
-      id: uid(), num, note: newWeekNote.trim(),
-      rows: []
-    }])
+    setActiveWeeks(ws => [...ws, { id: uid(), num, note: newWeekNote.trim(), rows: [] }])
     setModalWeek(false)
     setNewWeekNum('')
     setNewWeekNote('')
+    flashSaved()
   }
 
   function confirmAddSection() {
@@ -337,6 +351,12 @@ export default function Home() {
     setActive(id)
     setModalSection(false)
     setNewSectionName('')
+    flashSaved()
+  }
+
+  function flashSaved() {
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
@@ -361,6 +381,7 @@ export default function Home() {
             <div style={{ fontSize: 10, fontWeight: 600, color: G.greenMid, letterSpacing: 1 }}>PLANNER MAESTRI</div>
           </div>
         </div>
+
         <div style={{ flex: 1, display: 'flex', gap: 4, overflowX: 'auto', scrollbarWidth: 'none', padding: '4px 0' }}>
           {sections.map(s => (
             <button key={s.id} onClick={() => setActive(s.id)} style={{
@@ -379,12 +400,21 @@ export default function Home() {
             fontSize: 12, cursor: 'pointer', flexShrink: 0
           }}>+ sezione</button>
         </div>
+
+        {/* Indicatore salvataggio */}
+        <div style={{
+          fontSize: 11, fontWeight: 600, flexShrink: 0,
+          color: saved ? G.green : G.textLight,
+          display: 'flex', alignItems: 'center', gap: 4,
+          transition: 'color .3s'
+        }}>
+          {saved ? '✅ Salvato' : '💾 Auto-save'}
+        </div>
       </nav>
 
       {/* BODY */}
       <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
 
-        {/* Header pagina */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: G.text, margin: 0 }}>
@@ -428,7 +458,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Empty state */}
         {wks.length === 0 && (
           <div style={{ textAlign: 'center', padding: '60px 0', color: G.textLight }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
@@ -437,7 +466,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Settimane */}
         {wks.map(week => (
           <WeekBlock key={week.id} week={week}
             onUpdate={updateWeek}
