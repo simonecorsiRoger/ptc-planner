@@ -692,38 +692,53 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
         <div style={{ padding:'20px', textAlign:'center', color:G.textLight, fontSize:13 }}>Nessun maestro — clicca <strong>+ Maestro</strong></div>
       )}
       {expanded&&week.rows.length>0&&(
-        <div>
-          {sortedRows.map((row,ri)=>{
-            const ruoloInfo=RUOLI.find(r=>r.key===row.ruolo)
-            const impegnoInfo=IMPEGNI.find(i=>i.key===row.impegno)
-            return (
-              <div key={row.id} style={{ borderBottom:`1px solid #f0f5f0`, padding:'10px 14px', background:ri%2===0?'#fff':'#fafcfa' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
-                  <input defaultValue={row.nome} onBlur={e=>onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,nome:e.target.value}:r)})}
-                    style={{ flex:1, minWidth:100, border:'none', background:'transparent', fontSize:13, fontWeight:600, color:G.text, outline:'none', fontFamily:'inherit' }} />
-                  <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:700, background:ruoloInfo?.counted?G.greenLight:'#f3f4f6', color:ruoloInfo?.counted?G.green:G.textMid, flexShrink:0 }}>
-                    {ruoloInfo?.label||row.ruolo}
-                  </span>
-                  <select value={row.impegno||''} onChange={e=>onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,impegno:e.target.value}:r)})}
-                    style={{ border:`1px solid ${G.border}`, borderRadius:6, padding:'3px 6px', fontSize:11, fontFamily:'inherit', background:impegnoInfo?impegnoInfo.color+'18':'#fff', color:impegnoInfo?.color||G.textMid, fontWeight:600, outline:'none', cursor:'pointer' }}>
-                    <option value="">— al centro —</option>
-                    {IMPEGNI.map(imp=><option key={imp.key} value={imp.key}>{imp.label}</option>)}
-                  </select>
-                  <button onClick={()=>onDeleteRow(row.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ddd', fontSize:16, padding:'2px 4px' }}
-                    onMouseEnter={e=>e.target.style.color=G.red} onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>
+        <div style={{ overflowX:'auto' }}>
+          {/* Colonne per ruolo */}
+          <div style={{ display:'flex', gap:0, minWidth:'max-content' }}>
+            {ROLE_ORDER.filter(rk => sortedRows.some(r=>r.ruolo===rk)).map((rk, ci) => {
+              const ruoloInfo = RUOLI.find(r=>r.key===rk)
+              const rowsOfRole = sortedRows.filter(r=>r.ruolo===rk)
+              return (
+                <div key={rk} style={{ borderRight:`1px solid #e8f0e8`, minWidth:160, maxWidth:200, flex:1 }}>
+                  {/* Column header */}
+                  <div style={{ padding:'5px 8px', background:'#f4faf4', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:5 }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:ruoloInfo?.color||G.textMid, textTransform:'uppercase', letterSpacing:.3 }}>{ruoloInfo?.label||rk}</span>
+                    <span style={{ fontSize:10, color:G.textLight, marginLeft:'auto' }}>{rowsOfRole.length}</span>
+                  </div>
+                  {/* Rows */}
+                  {rowsOfRole.map((row, ri) => {
+                    const impegnoInfo = IMPEGNI.find(i=>i.key===row.impegno)
+                    return (
+                      <div key={row.id} style={{ padding:'5px 8px', borderBottom:`1px solid #f0f5f0`, background:row.impegno?impegnoInfo?.color+'08':ri%2===0?'#fff':'#fafcfa' }}>
+                        {/* Nome + delete */}
+                        <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
+                          <input defaultValue={row.nome} onBlur={e=>onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,nome:e.target.value}:r)})}
+                            style={{ flex:1, minWidth:0, border:'none', background:'transparent', fontSize:11, fontWeight:600, color:G.text, outline:'none', fontFamily:'inherit', overflow:'hidden', textOverflow:'ellipsis' }} />
+                          <button onClick={()=>onDeleteRow(row.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ddd', fontSize:12, padding:'0 2px', flexShrink:0, lineHeight:1 }}
+                            onMouseEnter={e=>e.target.style.color=G.red} onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>
+                        </div>
+                        {/* Impegno */}
+                        <select value={row.impegno||''} onChange={e=>onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,impegno:e.target.value}:r)})}
+                          style={{ width:'100%', border:`1px solid ${G.border}`, borderRadius:4, padding:'2px 4px', fontSize:10, fontFamily:'inherit', background:impegnoInfo?impegnoInfo.color+'15':'#f8f8f8', color:impegnoInfo?.color||G.textLight, fontWeight:600, outline:'none', cursor:'pointer', marginBottom:4 }}>
+                          <option value="">🏠 al centro</option>
+                          {IMPEGNI.map(imp=><option key={imp.key} value={imp.key}>{imp.label}</option>)}
+                        </select>
+                        {/* Giorni - compatti */}
+                        <div style={{ display:'flex', gap:2 }}>
+                          {DAYS.map((d,di)=>(
+                            <button key={di} onClick={()=>{ const ng=[...row.giorni]; ng[di]=!ng[di]; onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,giorni:ng}:r)}) }}
+                              style={{ flex:1, height:20, borderRadius:3, border:`1.5px solid ${row.giorni[di]?ruoloInfo?.color||G.green:G.border}`, background:row.giorni[di]?ruoloInfo?.color||G.green:'#fff', color:row.giorni[di]?'#fff':G.textLight, cursor:'pointer', fontSize:8, fontWeight:700, padding:0 }}>
+                              {row.giorni[di]?'✓':d}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                {/* Giorni */}
-                <div style={{ display:'flex', gap:4 }}>
-                  {DAYS.map((d,di)=>(
-                    <button key={di} onClick={()=>{ const ng=[...row.giorni]; ng[di]=!ng[di]; onUpdate({...week,rows:week.rows.map(r=>r.id===row.id?{...r,giorni:ng}:r)}) }}
-                      style={{ flex:1, height:28, borderRadius:6, border:`1.5px solid ${row.giorni[di]?G.green:G.border}`, background:row.giorni[di]?G.green:'#fff', color:row.giorni[di]?'#fff':G.textMid, cursor:'pointer', fontSize:11, fontWeight:700 }}>
-                      {row.giorni[di]?'✓':d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
