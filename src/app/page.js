@@ -551,6 +551,7 @@ function CoachPage({ coaches, weeks, onUpdateCoach, onAddCoach }) {
 // ── WeekBlock ─────────────────────────────────────────────────────────
 function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onAddRow, onDeleteRow, onCopyNext }) {
   const [expanded, setExpanded] = useState(true)
+  const [editNum, setEditNum] = useState(String(week.num))
   const { centro, torneo, travel, extra, tiroFuori, byRole } = calcCounters(week.rows)
   const monthIdx=MONTHS.indexOf(sectionName)
   let weekMon=null,weekSun=null
@@ -571,14 +572,16 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
           <div style={{ width:42, height:42, borderRadius:10, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
             <input
               type="number" min={1} max={31}
-              defaultValue={week.num}
+              value={editNum}
+              onChange={e => setEditNum(e.target.value)}
               onBlur={e => {
                 const n = parseInt(e.target.value)
                 if (n && n !== week.num) onUpdate({ ...week, num: n })
+                else setEditNum(String(week.num))
               }}
               onKeyDown={e => e.key==='Enter' && e.target.blur()}
-              style={{ width:42, height:42, background:'transparent', border:'none', outline:'none', textAlign:'center', fontSize:18, fontWeight:800, color:'#fff', fontFamily:'inherit', MozAppearance:'textfield', cursor:'text' }}
-              title="Clicca per modificare il giorno"
+              style={{ width:42, height:42, background:'transparent', border:'none', outline:'none', textAlign:'center', fontSize:18, fontWeight:800, color:'#fff', fontFamily:'inherit', MozAppearance:'textfield', WebkitAppearance:'none', cursor:'text' }}
+              title="Clicca per modificare"
             />
           </div>
           <div style={{ flex:1,minWidth:0 }}>
@@ -907,6 +910,40 @@ export default function Home() {
   }
 
   function doFlash(){ setFlashSave(true); setTimeout(()=>setFlashSave(false),2000) }
+
+  async function exportCSV() {
+    try {
+      const [settimane, maestri, coachList] = await Promise.all([
+        SB.get('planner_settimane', 'select=*&order=sezione,num'),
+        SB.get('planner_maestri', 'select=*'),
+        SB.get('coach', 'select=*&order=nome'),
+      ])
+      function toCSV(rows) {
+        if (!rows.length) return ''
+        const keys = Object.keys(rows[0])
+        const header = keys.join(',')
+        const lines = rows.map(r => keys.map(k => {
+          const v = r[k]
+          if (v === null || v === undefined) return ''
+          const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
+          return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s
+        }).join(','))
+        return [header, ...lines].join('\n')
+      }
+      function download(filename, content) {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = filename; a.click()
+        URL.revokeObjectURL(url)
+      }
+      const date = new Date().toISOString().slice(0,10)
+      download(`ptc_settimane_${date}.csv`, toCSV(settimane))
+      setTimeout(() => download(`ptc_maestri_${date}.csv`, toCSV(maestri)), 400)
+      setTimeout(() => download(`ptc_coach_${date}.csv`, toCSV(coachList)), 800)
+      alert('✅ Backup scaricato! 3 file CSV salvati.')
+    } catch(e) { alert('Errore export: ' + e.message) }
+  }
     try {
       const [settimane, maestri, coachList] = await Promise.all([
         SB.get('planner_settimane', 'select=*&order=sezione,num'),
