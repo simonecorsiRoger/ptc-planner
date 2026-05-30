@@ -568,7 +568,19 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
     <div style={{ background:'#fff',borderRadius:12,border:`1px solid ${G.border}`,marginBottom:14,overflow:'hidden',boxShadow:'0 1px 6px rgba(26,107,60,0.07)' }}>
       <div style={{ background:G.greenLight,borderBottom:`1px solid ${G.border}`,padding:'10px 14px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:42,height:42,borderRadius:10,background:G.green,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:800,color:'#fff',flexShrink:0 }}>{week.num}</div>
+          <div style={{ width:42, height:42, borderRadius:10, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+            <input
+              type="number" min={1} max={31}
+              defaultValue={week.num}
+              onBlur={e => {
+                const n = parseInt(e.target.value)
+                if (n && n !== week.num) onUpdate({ ...week, num: n })
+              }}
+              onKeyDown={e => e.key==='Enter' && e.target.blur()}
+              style={{ width:42, height:42, background:'transparent', border:'none', outline:'none', textAlign:'center', fontSize:18, fontWeight:800, color:'#fff', fontFamily:'inherit', MozAppearance:'textfield', cursor:'text' }}
+              title="Clicca per modificare il giorno"
+            />
+          </div>
           <div style={{ flex:1,minWidth:0 }}>
             <div style={{ fontSize:13,fontWeight:700,color:G.text }}>
               Settimana {week.num}
