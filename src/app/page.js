@@ -778,9 +778,40 @@ export default function Home() {
     doFlash()
   }
 
+  const [undoStack, setUndoStack] = useState(null)
+  const [trash, setTrash] = useState([])
+  const [showTrash, setShowTrash] = useState(false)
+  const undoTimer = useRef(null)
+
   async function deleteWeek(weekId) {
+    const week = (weeks[active]||[]).find(w=>w.id===weekId)
+    if (!week) return
+    // Show undo toast for 6 seconds, then permanently delete
+    setUndoStack({ week, sezione: active })
+    clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(async () => {
+      await dbDeleteWeek(weekId)
+      setTrash(prev=>[{ week, sezione:active, deletedAt:Date.now() }, ...prev].slice(0,20))
+      setUndoStack(null)
+    }, 6000)
     setWeeks(prev=>({...prev,[active]:(prev[active]||[]).filter(w=>w.id!==weekId)}))
-    await dbDeleteWeek(weekId)
+    doFlash()
+  }
+
+  async function undoDelete() {
+    if (!undoStack) return
+    clearTimeout(undoTimer.current)
+    const { week, sezione } = undoStack
+    setWeeks(prev=>({...prev,[sezione]:[...(prev[sezione]||[]),week].sort((a,b)=>a.num-b.num)}))
+    setUndoStack(null)
+  }
+
+  async function restoreFromTrash(item) {
+    const { week, sezione } = item
+    setWeeks(prev=>({...prev,[sezione]:[...(prev[sezione]||[]),week].sort((a,b)=>a.num-b.num)}))
+    await dbSaveWeek(sezione, week)
+    await Promise.all(week.rows.map(r=>dbSaveRow(week.id,r)))
+    setTrash(prev=>prev.filter(t=>t.week.id!==week.id))
     doFlash()
   }
 
@@ -906,6 +937,11 @@ export default function Home() {
           {syncStatus==='error'&&<button onClick={loadAll} style={{ color:G.red,background:'none',border:'none',cursor:'pointer',fontSize:11 }}>⚠️</button>}
           {saving&&<span style={{ fontSize:10,color:G.textLight }}>⟳</span>}
           <span style={{ color:flashSave?G.green:G.textLight,transition:'color .3s',fontSize:12 }}>{flashSave?'✅':'☁️'}</span>
+          {trash.length>0&&(
+            <button onClick={()=>setShowTrash(true)} title="Cestino — settimane eliminate" style={{ background:'#fff8f0',border:`1px solid #fecaca`,borderRadius:8,padding:'4px 8px',cursor:'pointer',fontSize:11,color:G.red,fontWeight:700 }}>
+              🗑️ {trash.length}
+            </button>
+          )}
           <button onClick={doLogout} title="Esci" style={{ background:'none',border:`1px solid ${G.border}`,borderRadius:8,padding:'4px 8px',cursor:'pointer',fontSize:11,color:G.textMid }}>🚪</button>
         </div>
       </nav>
@@ -987,6 +1023,38 @@ export default function Home() {
           <button onClick={()=>setModalWeek(false)} style={{ background:'transparent',color:G.textMid,border:`1.5px solid ${G.border}`,padding:'9px 18px',borderRadius:8,fontFamily:'inherit',fontSize:13,cursor:'pointer' }}>Annulla</button>
           <button onClick={confirmAddWeek} style={{ background:G.green,color:'#fff',border:'none',padding:'9px 18px',borderRadius:8,fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer' }}>Crea</button>
         </div>
+      </Modal>
+
+      {/* UNDO TOAST */}
+      {undoStack&&(
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:500, background:'#1a1a1a', color:'#fff', borderRadius:12, padding:'12px 20px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 4px 20px rgba(0,0,0,0.3)', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:13 }}>🗑️ Settimana {undoStack.week.num} eliminata</span>
+          <button onClick={undoDelete} style={{ background:G.green, color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontFamily:'inherit', fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ Annulla</button>
+        </div>
+      )}
+
+      {/* CESTINO MODAL */}
+      <Modal open={showTrash} onClose={()=>setShowTrash(false)} title="🗑️ Cestino">
+        {trash.length===0?(
+          <div style={{ textAlign:'center', padding:'20px 0', color:G.textLight, fontSize:13 }}>Nessuna settimana nel cestino</div>
+        ):(
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {trash.map(item=>{
+              const sec=SECTIONS.find(s=>s.id===item.sezione)
+              const when=new Date(item.deletedAt)
+              return (
+                <div key={item.week.id} style={{ display:'flex', alignItems:'center', gap:10, background:G.bg, borderRadius:10, padding:'10px 14px', border:`1px solid ${G.border}` }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:G.text }}>Settimana {item.week.num} — {sec?.name}</div>
+                    <div style={{ fontSize:11, color:G.textMid }}>{item.week.rows.length} maestri · {when.toLocaleDateString('it-IT',{day:'numeric',month:'short'})} {when.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</div>
+                  </div>
+                  <button onClick={()=>{ restoreFromTrash(item); if(trash.length<=1) setShowTrash(false) }} style={{ background:G.green, color:'#fff', border:'none', borderRadius:8, padding:'7px 14px', fontFamily:'inherit', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>↩ Ripristina</button>
+                </div>
+              )
+            })}
+            <button onClick={()=>setTrash([])} style={{ marginTop:4, background:'transparent', border:`1px solid #fecaca`, color:G.red, borderRadius:8, padding:'7px', fontFamily:'inherit', fontSize:12, cursor:'pointer' }}>Svuota cestino</button>
+          </div>
+        )}
       </Modal>
     </div>
   )
