@@ -549,7 +549,7 @@ function CoachPage({ coaches, weeks, onUpdateCoach, onAddCoach }) {
 }
 
 // ── WeekBlock ─────────────────────────────────────────────────────────
-function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onAddRow, onDeleteRow }) {
+function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onAddRow, onDeleteRow, onCopyNext }) {
   const [expanded, setExpanded] = useState(true)
   const { centro, torneo, travel, extra, tiroFuori, byRole } = calcCounters(week.rows)
   const monthIdx=MONTHS.indexOf(sectionName)
@@ -589,6 +589,7 @@ function WeekBlock({ week, coaches, tornei, sectionName, onUpdate, onDelete, onA
           ))}
           <div style={{ flexShrink:0,display:'flex',gap:4,marginLeft:8 }}>
             <button onClick={onAddRow} style={{ background:'#fff',border:`1.5px solid ${G.green}`,color:G.green,borderRadius:8,padding:'4px 12px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' }}>+ Maestro</button>
+            <button onClick={onCopyNext} title="Copia maestri nella settimana successiva" style={{ background:'#fff',border:`1.5px solid ${G.blue}`,color:G.blue,borderRadius:8,padding:'4px 8px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' }}>📋 +7</button>
             <button onClick={onDelete} style={{ background:'#fef2f2',border:`1.5px solid #fecaca`,color:G.red,borderRadius:8,padding:'4px 8px',fontFamily:'inherit',fontSize:12,cursor:'pointer' }}>✕</button>
           </div>
         </div>
@@ -795,7 +796,54 @@ export default function Home() {
     doFlash()
   }
 
+  async function copyWeekToNext(week) {
+    const nextNum = week.num + 7
+    // Check if a week with that num already exists
+    const existing = wks.find(w => w.num === nextNum)
+    const newRows = week.rows.map(r => ({ ...r, id: uid() }))
+    if (existing) {
+      // Merge: add rows that don't already exist (by name+role)
+      const toAdd = newRows.filter(nr => !existing.rows.some(er => er.nome === nr.nome && er.ruolo === nr.ruolo))
+      if (toAdd.length === 0) { alert('La settimana '+nextNum+' esiste già con gli stessi maestri.'); return }
+      const updated = { ...existing, rows: [...existing.rows, ...toAdd] }
+      await updateWeek(updated)
+      alert(`✅ Aggiunti ${toAdd.length} maestri alla settimana ${nextNum}`)
+    } else {
+      const newWeek = { id: uid(), num: nextNum, note: week.note, rows: newRows }
+      setWeeks(prev => ({ ...prev, [active]: [...(prev[active]||[]), newWeek].sort((a,b)=>a.num-b.num) }))
+      await dbSaveWeek(active, newWeek)
+      await Promise.all(newRows.map(r => dbSaveRow(newWeek.id, r)))
+      doFlash()
+    }
+  }
+
   function openAddRow(weekId){ setModalRow(weekId); setNewNome(''); setNewRuolo(''); setNewImpegno(''); setNewCoachId(''); setNewGiorni([false,false,false,false,false,false,false]) }
+    const currentSec = sections.find(s => s.id === active)
+    const currentIdx = MONTHS.indexOf(currentSec?.name)
+    if (currentIdx < 0 || currentIdx >= 11) { alert('Impossibile copiare: seleziona un mese valido (non Dicembre).'); return }
+    const nextMonthName = MONTHS[currentIdx + 1]
+    const nextSec = SECTIONS.find(s => s.name === nextMonthName)
+    if (!nextSec) return
+    const currentWks = weeks[active] || []
+    if (currentWks.length === 0) { alert('Nessuna settimana da copiare.'); return }
+    const confirmed = window.confirm(`Copia tutte le settimane di ${currentSec.name} in ${nextMonthName}?\n\nLe settimane esistenti in ${nextMonthName} non verranno sovrascritte.`)
+    if (!confirmed) return
+
+    const nextWks = weeks[nextSec.id] || []
+    let added = 0
+    for (const week of currentWks) {
+      if (nextWks.some(w => w.num === week.num)) continue // skip existing
+      const newRows = week.rows.map(r => ({ ...r, id: uid() }))
+      const newWeek = { id: uid(), num: week.num, note: week.note, rows: newRows }
+      nextWks.push(newWeek)
+      await dbSaveWeek(nextSec.id, newWeek)
+      await Promise.all(newRows.map(r => dbSaveRow(newWeek.id, r)))
+      added++
+    }
+    setWeeks(prev => ({ ...prev, [nextSec.id]: [...nextWks].sort((a,b)=>a.num-b.num) }))
+    doFlash()
+    alert(`✅ Copiate ${added} settimane in ${nextMonthName}!`)
+  }
 
   function confirmAddRow(){
     if(!newRuolo) return
@@ -872,7 +920,13 @@ export default function Home() {
               <h1 style={{ fontSize:20,fontWeight:800,color:G.text,margin:0 }}>{activeSection?.name} 2026</h1>
               <p style={{ fontSize:12,color:G.textMid,margin:'2px 0 0' }}>{wks.length} sett. · {wks.reduce((s,w)=>s+w.rows.length,0)} maestri · ☁️ salvato su cloud</p>
             </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={copyMonthToNext} title="Copia tutte le settimane nel mese successivo"
+              style={{ background:'#fff',border:`1.5px solid ${G.blue}`,color:G.blue,borderRadius:10,padding:'9px 14px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' }}>
+              📋 Copia mese →
+            </button>
             <button onClick={()=>setModalWeek(true)} style={{ background:G.green,color:'#fff',border:'none',borderRadius:10,padding:'9px 16px',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' }}>+ Settimana</button>
+          </div>
           </div>
           <div style={{ background:'#fff',border:`1px solid ${G.border}`,borderRadius:10,padding:'12px 14px',marginBottom:14,boxShadow:'0 1px 4px rgba(26,107,60,0.05)' }}>
             <div style={{ display:'flex',flexDirection:'column',gap:7 }}>
@@ -893,7 +947,8 @@ export default function Home() {
             <WeekBlock key={week.id} week={week} coaches={coaches} tornei={tornei}
               sectionName={activeSection?.name||''}
               onUpdate={updateWeek} onDelete={()=>deleteWeek(week.id)}
-              onAddRow={()=>openAddRow(week.id)} onDeleteRow={rowId=>deleteRow(week.id,rowId)} />
+              onAddRow={()=>openAddRow(week.id)} onDeleteRow={rowId=>deleteRow(week.id,rowId)}
+              onCopyNext={()=>copyWeekToNext(week)} />
           ))}
         </div>
       )}
