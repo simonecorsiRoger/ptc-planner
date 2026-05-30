@@ -895,6 +895,44 @@ export default function Home() {
   }
 
   function doFlash(){ setFlashSave(true); setTimeout(()=>setFlashSave(false),2000) }
+    try {
+      const [settimane, maestri, coachList] = await Promise.all([
+        SB.get('planner_settimane', 'select=*&order=sezione,num'),
+        SB.get('planner_maestri', 'select=*'),
+        SB.get('coach', 'select=*&order=nome'),
+      ])
+
+      function toCSV(rows) {
+        if (!rows.length) return ''
+        const keys = Object.keys(rows[0])
+        const header = keys.join(',')
+        const lines = rows.map(r => keys.map(k => {
+          const v = r[k]
+          if (v === null || v === undefined) return ''
+          const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
+          return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s
+        }).join(','))
+        return [header, ...lines].join('\n')
+      }
+
+      function download(filename, content) {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = filename; a.click()
+        URL.revokeObjectURL(url)
+      }
+
+      const date = new Date().toISOString().slice(0,10)
+      download(`ptc_settimane_${date}.csv`, toCSV(settimane))
+      setTimeout(() => download(`ptc_maestri_${date}.csv`, toCSV(maestri)), 300)
+      setTimeout(() => download(`ptc_coach_${date}.csv`, toCSV(coachList)), 600)
+
+      alert('✅ Backup scaricato! 3 file CSV salvati.')
+    } catch(e) {
+      alert('Errore export: ' + e.message)
+    }
+  }
 
   if(!loggedIn) return <LoginPage onLogin={doLogin} />
 
@@ -942,6 +980,7 @@ export default function Home() {
               🗑️ {trash.length}
             </button>
           )}
+          <button onClick={exportCSV} title="Scarica backup CSV" style={{ background:'none',border:`1px solid ${G.border}`,borderRadius:8,padding:'4px 8px',cursor:'pointer',fontSize:11,color:G.textMid }}>💾 Backup</button>
           <button onClick={doLogout} title="Esci" style={{ background:'none',border:`1px solid ${G.border}`,borderRadius:8,padding:'4px 8px',cursor:'pointer',fontSize:11,color:G.textMid }}>🚪</button>
         </div>
       </nav>
