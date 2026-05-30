@@ -818,6 +818,8 @@ export default function Home() {
   }
 
   function openAddRow(weekId){ setModalRow(weekId); setNewNome(''); setNewRuolo(''); setNewImpegno(''); setNewCoachId(''); setNewGiorni([false,false,false,false,false,false,false]) }
+
+  async function copyMonthToNext() {
     const currentSec = sections.find(s => s.id === active)
     const currentIdx = MONTHS.indexOf(currentSec?.name)
     if (currentIdx < 0 || currentIdx >= 11) { alert('Impossibile copiare: seleziona un mese valido (non Dicembre).'); return }
@@ -828,11 +830,10 @@ export default function Home() {
     if (currentWks.length === 0) { alert('Nessuna settimana da copiare.'); return }
     const confirmed = window.confirm(`Copia tutte le settimane di ${currentSec.name} in ${nextMonthName}?\n\nLe settimane esistenti in ${nextMonthName} non verranno sovrascritte.`)
     if (!confirmed) return
-
-    const nextWks = weeks[nextSec.id] || []
+    const nextWks = [...(weeks[nextSec.id] || [])]
     let added = 0
     for (const week of currentWks) {
-      if (nextWks.some(w => w.num === week.num)) continue // skip existing
+      if (nextWks.some(w => w.num === week.num)) continue
       const newRows = week.rows.map(r => ({ ...r, id: uid() }))
       const newWeek = { id: uid(), num: week.num, note: week.note, rows: newRows }
       nextWks.push(newWeek)
